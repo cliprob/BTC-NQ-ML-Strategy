@@ -1,0 +1,32 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local research archive retained on disk but not published.
+1_Phase/
+2_Phase/
+3_Phase/
+dump/
+work_dir/
+
+# Full market data stays local. Commit only curated samples.
+data/raw/
+data/processed/
+*.csv
+!data/sample/*.csv
+!outputs/tables/*.csv
+
+# Local credentials and machine-specific files.
+.env
+*.key
+*_api_key.txt
+stooq_api_key.txt
+secrets.*
+
+# Generated scratch output.
+tmp/
+scratch/
