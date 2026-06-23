@@ -59,37 +59,69 @@ def generate_labeled_trades(
     if not features:
         raise ValueError("No model feature columns found. Run add_market_features first.")
 
-    records: list[dict[str, object]] = []
     clean = market_data.dropna(subset=features).copy()
     if len(clean) <= max_holding_minutes + 2:
-        return pd.DataFrame(columns=["entry_idx", "exit_idx", "entry_time", "pnl", "target", *features])
+        return pd.DataFrame(
+            columns=[
+                "entry_idx",
+                "exit_idx",
+                "signal_time",
+                "entry_time",
+                "pnl",
+                "target",
+                *features,
+            ]
+        )
 
-    for signal_pos in range(1, len(clean) - max_holding_minutes - 1):
-        row = clean.iloc[signal_pos]
-        dir_btc = np.sign(row["close_btc"] - row["open_btc"])
-        dir_nq = np.sign(row["close_nq"] - row["open_nq"])
+    index = clean.index
+    open_btc = clean["open_btc"].to_numpy()
+    close_btc = clean["close_btc"].to_numpy()
+    open_nq = clean["open_nq"].to_numpy()
+    close_nq = clean["close_nq"].to_numpy()
+    hours = index.hour.to_numpy()
+    minutes = index.minute.to_numpy()
+    feature_arrays = {feature: clean[feature].to_numpy() for feature in features}
+
+    records: list[dict[str, object]] = []
+    last_signal_pos = len(clean) - max_holding_minutes - 1
+
+    for signal_pos in range(1, last_signal_pos):
+        dir_btc = np.sign(close_btc[signal_pos] - open_btc[signal_pos])
+        dir_nq = np.sign(close_nq[signal_pos] - open_nq[signal_pos])
 
         if dir_btc == 0 or dir_btc != dir_nq:
             continue
 
         entry_pos = signal_pos + 1
-        pnl, exit_pos = _trade_outcome(
-            entry_pos,
-            clean,
-            dir_btc,
-            max_holding_minutes,
-            safety_close_hour,
-            safety_close_minute,
-        )
+        entry_price = float(open_nq[entry_pos])
+        exit_pos = min(entry_pos + max_holding_minutes - 1, len(clean) - 1)
+
+        for current_pos in range(entry_pos, min(entry_pos + max_holding_minutes, len(clean))):
+            is_eod = (
+                hours[current_pos] == safety_close_hour
+                and minutes[current_pos] >= safety_close_minute
+            ) or hours[current_pos] > safety_close_hour
+
+            curr_dir_btc = np.sign(close_btc[current_pos] - open_btc[current_pos])
+            curr_dir_nq = np.sign(close_nq[current_pos] - open_nq[current_pos])
+            is_divergence = curr_dir_btc != curr_dir_nq
+            is_reversal = curr_dir_btc == -dir_btc and curr_dir_nq == -dir_btc
+
+            if is_eod or is_divergence or is_reversal:
+                exit_pos = current_pos
+                break
+
+        pnl = (float(close_nq[exit_pos]) - entry_price) * dir_btc
 
         record = {
             "entry_idx": int(entry_pos),
             "exit_idx": int(exit_pos),
-            "entry_time": clean.index[entry_pos],
+            "signal_time": index[signal_pos],
+            "entry_time": index[entry_pos],
             "pnl": float(pnl),
             "target": int(pnl > 0),
         }
-        record.update({feature: float(row[feature]) for feature in features})
+        record.update({feature: float(feature_arrays[feature][signal_pos]) for feature in features})
         records.append(record)
 
     return pd.DataFrame.from_records(records)

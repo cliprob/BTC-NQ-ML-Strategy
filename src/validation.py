@@ -109,6 +109,7 @@ def run_walk_forward_classifier(
     train_window: int,
     test_window: int,
     threshold_grid: Iterable[float] | None = None,
+    min_trades: int = 5,
 ) -> dict[str, object]:
     validate_no_leakage_columns(feature_cols)
     if threshold_grid is None:
@@ -136,7 +137,12 @@ def run_walk_forward_classifier(
             train_probs = 1 / (1 + np.exp(-train_scores))
             test_probs = 1 / (1 + np.exp(-test_scores))
 
-        threshold = choose_threshold_on_train(train_df, train_probs, threshold_grid)
+        threshold = choose_threshold_on_train(
+            train_df,
+            train_probs,
+            threshold_grid,
+            min_trades=min_trades,
+        )
         threshold_history.append(threshold)
 
         scored = test_df.copy()
@@ -154,4 +160,54 @@ def run_walk_forward_classifier(
         "metrics": summarize_trades(selected),
         "threshold_history": threshold_history,
         "scaler_means": scaler_means,
+    }
+
+
+def run_train_then_holdout_classifier(
+    train_df: pd.DataFrame,
+    holdout_df: pd.DataFrame,
+    feature_cols: list[str],
+    model_factory: Callable[[], ClassifierMixin],
+    threshold_grid: Iterable[float] | None = None,
+    min_trades: int = 5,
+) -> dict[str, object]:
+    """Fit on the historical set, tune threshold there, then score holdout."""
+
+    validate_no_leakage_columns(feature_cols)
+    if threshold_grid is None:
+        threshold_grid = np.arange(0.50, 0.66, 0.01)
+
+    scaler = StandardScaler()
+    x_train = scaler.fit_transform(train_df[feature_cols])
+    x_holdout = scaler.transform(holdout_df[feature_cols])
+
+    model = model_factory()
+    model.fit(x_train, train_df["target"])
+
+    if hasattr(model, "predict_proba"):
+        train_probs = model.predict_proba(x_train)[:, 1]
+        holdout_probs = model.predict_proba(x_holdout)[:, 1]
+    else:
+        train_scores = model.decision_function(x_train)
+        holdout_scores = model.decision_function(x_holdout)
+        train_probs = 1 / (1 + np.exp(-train_scores))
+        holdout_probs = 1 / (1 + np.exp(-holdout_scores))
+
+    threshold = choose_threshold_on_train(
+        train_df,
+        train_probs,
+        threshold_grid,
+        min_trades=min_trades,
+    )
+
+    scored = holdout_df.copy()
+    scored["probability"] = holdout_probs
+    scored["signal"] = scored["probability"] >= threshold
+    selected = select_non_overlapping_trades(scored)
+
+    return {
+        "selected_trades": selected,
+        "metrics": summarize_trades(selected),
+        "threshold": threshold,
+        "scaler_mean": scaler.mean_.copy(),
     }

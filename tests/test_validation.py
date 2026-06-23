@@ -7,6 +7,7 @@ from src.validation import (
     chronological_split,
     iter_walk_forward_windows,
     run_walk_forward_classifier,
+    run_train_then_holdout_classifier,
     validate_no_leakage_columns,
 )
 
@@ -65,3 +66,22 @@ def test_walk_forward_scaler_is_fit_on_train_window_only():
     expected_first_mean = frame.iloc[:40][feature_cols].mean().to_numpy()
     assert np.allclose(result["scaler_means"][0], expected_first_mean)
     assert result["metrics"]["trade_count"] > 0
+
+
+def test_train_then_holdout_uses_train_scaler_and_holdout_scores():
+    frame = make_trade_frame()
+    train = frame.iloc[:80].copy()
+    holdout = frame.iloc[80:].copy()
+    feature_cols = ["feature_a", "feature_b"]
+
+    result = run_train_then_holdout_classifier(
+        train,
+        holdout,
+        feature_cols,
+        model_factory=lambda: LogisticRegression(solver="liblinear", random_state=42),
+        threshold_grid=[0.5],
+    )
+
+    expected_mean = train[feature_cols].mean().to_numpy()
+    assert np.allclose(result["scaler_mean"], expected_mean)
+    assert set(result["selected_trades"]["entry_idx"]).issubset(set(holdout["entry_idx"]))

@@ -30,3 +30,4 @@ secrets.*
 # Generated scratch output.
 tmp/
 scratch/
+outputs/full_reproduction/

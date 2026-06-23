@@ -89,6 +89,7 @@ The weak Sharpe-like ratio and large drawdown are part of the result. They are n
 |   `-- tables/
 |-- scripts/
 |   |-- clean_notebooks.py
+|   |-- full_reproduction.py
 |   `-- smoke_run.py
 |-- src/
 |   |-- backtest.py
@@ -124,6 +125,64 @@ The smoke run writes:
 - `outputs/tables/sample_smoke_metrics.csv`
 - `outputs/tables/sample_selected_trades.csv`
 - `outputs/figures/sample_walk_forward_equity.png`
+
+## Full Local Reproduction
+
+The public repository does not commit the full market CSV files, but the full-data reproduction mode is available for local use. It expects the original local files to remain in:
+
+```text
+2_Phase/working/ENGINE_BINANCE_BTC_2024-01-01_to_2025_12_05.csv
+2_Phase/working/ENGINE_Nasdaq_1_minute_data_2024-01-01_to_2025-12-05.csv
+```
+
+Run it from the repository root:
+
+```powershell
+cd C:\Users\clipr\dev\studia\machine_learning_1\ML_project
+python scripts/full_reproduction.py
+```
+
+This uses the legacy-style settings from the original modeling notebook:
+
+- `max_holding_minutes=600`
+- chronological `80% / 20%` split
+- Logistic Regression rolling window `3000 / 1000`
+- Logistic Regression threshold search from `0.50` to `0.64`
+- Random Forest archetype comparison
+- Linear SVM walk-forward
+- legacy feature set with RSI, ATR percent, MACD histogram, Bollinger width, EMA distance, and hour dummies
+
+Outputs are written locally to:
+
+```text
+outputs/full_reproduction/latest/
+```
+
+The folder is ignored by Git. The main files to inspect are:
+
+- `metrics.csv`
+- `run_config.json`
+- `equity_curves.png`
+- `selected_logreg_holdout.csv`
+- `selected_logreg_walk_forward_train_val.csv`
+- `random_forest_config_metrics.csv`
+- `logreg_threshold_history.csv`
+
+For a quick sanity check before the full run:
+
+```powershell
+python scripts/full_reproduction.py --row-limit 50000 --models lr
+```
+
+To run only one model family:
+
+```powershell
+python scripts/full_reproduction.py --models lr
+python scripts/full_reproduction.py --models rf
+python scripts/full_reproduction.py --models svm
+```
+
+The full mode is intended to reproduce the old local workflow more closely than the public smoke run. It still reports a separate holdout result so the final 20% is not used for threshold selection or model choice.
 
 ## Docker
 

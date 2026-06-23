@@ -1,4 +1,4 @@
-.PHONY: check test smoke clean-notebooks
+.PHONY: check test smoke full-reproduction clean-notebooks
 
 PYTHON ?= python
 
@@ -9,6 +9,9 @@ test:
 
 smoke:
 	$(PYTHON) scripts/smoke_run.py
+
+full-reproduction:
+	$(PYTHON) scripts/full_reproduction.py
 
 clean-notebooks:
 	$(PYTHON) scripts/clean_notebooks.py notebooks
